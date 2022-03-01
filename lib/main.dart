@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:amplified_todo/amplifyconfiguration.dart';
+import 'package:amplified_todo/constants/theme_constants.dart';
 import 'package:amplified_todo/models/ModelProvider.dart';
 import 'package:amplify_api/amplify_api.dart';
 import 'package:amplify_auth_cognito/amplify_auth_cognito.dart';
+import 'package:amplify_authenticator/amplify_authenticator.dart';
 import 'package:amplify_datastore/amplify_datastore.dart';
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:flutter/material.dart';
@@ -12,12 +14,48 @@ void main() {
   runApp(MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  final AmplifyDataStore _dataStorePlugin =
+      AmplifyDataStore(modelProvider: ModelProvider.instance);
+
+  final AmplifyAPI _apiPlugin = AmplifyAPI();
+
+  final AmplifyAuthCognito _authPlugin = AmplifyAuthCognito();
+
+  Future<void> _configureAmplify() async {
+    // await Amplify.addPlugin(AmplifyAPI()); // UNCOMMENT this line after backend is deployed
+
+    try {
+      await Amplify.addPlugins([_dataStorePlugin, _apiPlugin, _authPlugin]);
+
+      // Once Plugins are added, configure Amplify
+      await Amplify.configure(amplifyconfig);
+    } on Exception catch (e) {
+      print('An error occurred while configuring Amplify: $e');
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _configureAmplify();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Amplified Todo',
-      home: TodosPage(),
+    return Authenticator(
+      initialStep: AuthenticatorStep.signIn,
+      child: MaterialApp(
+        theme: customLightTheme,
+        builder: Authenticator.builder(),
+        title: 'Amplified Todo',
+        home: TodosPage(),
+      ),
     );
   }
 }
@@ -28,10 +66,6 @@ class TodosPage extends StatefulWidget {
 }
 
 class _TodosPageState extends State<TodosPage> {
-  final AmplifyDataStore _dataStorePlugin =
-      AmplifyDataStore(modelProvider: ModelProvider.instance);
-  final AmplifyAPI _apiPlugin = AmplifyAPI();
-  final AmplifyAuthCognito _authPlugin = AmplifyAuthCognito();
   bool _amplifyConfigured = false;
 
   late StreamSubscription<QuerySnapshot<Todo>> _subscription;
@@ -41,13 +75,14 @@ class _TodosPageState extends State<TodosPage> {
 
   @override
   void dispose() {
-    // to be filled in a later step
     super.dispose();
   }
 
   Future<void> _initializeApp() async {
-    await _configureAmplify();
+    getTodos();
+  }
 
+  Future getTodos() async {
     _subscription = Amplify.DataStore.observeQuery(Todo.classType)
         .listen((QuerySnapshot<Todo> snapshot) {
       setState(() {
@@ -68,6 +103,20 @@ class _TodosPageState extends State<TodosPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text("Todo List"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () {
+              // Navigator.push(
+              //   context,
+              //   MaterialPageRoute(
+              //     builder: (context) => AddTodoPage(),
+              //   ),
+              // );
+              logout();
+            },
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -88,19 +137,6 @@ class _TodosPageState extends State<TodosPage> {
     );
   }
 
-  Future<void> _configureAmplify() async {
-    // await Amplify.addPlugin(AmplifyAPI()); // UNCOMMENT this line after backend is deployed
-
-    try {
-      await Amplify.addPlugins([_dataStorePlugin, _apiPlugin, _authPlugin]);
-
-      // Once Plugins are added, configure Amplify
-      await Amplify.configure(amplifyconfig);
-    } catch (e) {
-      print('An error occurred while configuring Amplify: $e');
-    }
-  }
-
   Future addTodo() async {
     try {
       final item = Todo(
@@ -111,6 +147,14 @@ class _TodosPageState extends State<TodosPage> {
       debugPrint("Item saved");
     } catch (e) {
       debugPrint(e.toString());
+    }
+  }
+
+  void logout() async {
+    try {
+      await Amplify.Auth.signOut();
+    } on AuthException catch (e) {
+      print(e.message);
     }
   }
 }
